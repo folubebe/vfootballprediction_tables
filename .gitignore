@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+virtual_football.db
+project_code_export.txt
+.venv/
+*.log
+*.env
+/chromedriver
