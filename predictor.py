@@ -1,9 +1,20 @@
 import sqlite3
 from datetime import datetime
+import os
+
+def get_db_path():
+    """Get the correct database path based on environment."""
+    # Check if we're on Vercel or other cloud platform where current dir isn't writable
+    if os.environ.get('VERCEL') or os.environ.get('VERCEL_ENV') or not os.access('.', os.W_OK):
+        # Use /tmp directory on Vercel (writable)
+        return '/tmp/virtual_football.db'
+    else:
+        # Use current directory for local development
+        return 'virtual_football.db'
 
 class Predictor:
-    def __init__(self, db_path='virtual_football.db'):
-        self.db_path = db_path
+    def __init__(self, db_path=None):
+        self.db_path = db_path or get_db_path()
 
     def get_team_stats(self, team_name, league, limit=5):
         """Get team stats with proper connection handling"""

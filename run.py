@@ -8,8 +8,14 @@ from simplified_enhanced_fetcher import EnhancedDataFetcher  # Updated import
 import sqlite3
 
 # Initialize enhanced data fetcher
-data_fetcher = EnhancedDataFetcher('virtual_football.db')
-
+data_fetcher = EnhancedDataFetcher(get_db_path())
+def get_db_path():
+    """Get the correct database path based on environment."""
+    import os
+    if os.environ.get('VERCEL') or os.environ.get('VERCEL_ENV') or not os.access('.', os.W_OK):
+        return '/tmp/virtual_football.db'
+    else:
+        return 'virtual_football.db'
 def update_data():
     """Fetch and update both completed and scheduled matches using enhanced fetcher."""
     print(f"Starting FULL data update at {datetime.now()}")

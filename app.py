@@ -5,9 +5,137 @@ from config import standardize_league_name, get_display_name
 import sqlite3
 import os 
 
+def get_db_path():
+    """Get the correct database path based on environment."""
+    # Check if we're on Vercel or other cloud platform where current dir isn't writable
+    if os.environ.get('VERCEL') or os.environ.get('VERCEL_ENV') or not os.access('.', os.W_OK):
+        # Use /tmp directory on Vercel (writable)
+        return '/tmp/virtual_football.db'
+    else:
+        # Use current directory for local development
+        return 'virtual_football.db'
+
 app = Flask(__name__, template_folder='templates', static_folder='static')
-db_path = 'virtual_football.db'
+db_path = get_db_path()
 predictor = Predictor(db_path)
+
+# Initialize database tables on startup
+def init_database():
+    """Initialize database tables if they don't exist."""
+    try:
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            
+            # Create matches table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS matches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT UNIQUE,
+                    game_id TEXT,
+                    home_team TEXT,
+                    away_team TEXT,
+                    home_score INTEGER,
+                    away_score INTEGER,
+                    total_goals INTEGER,
+                    ht_home_score INTEGER,
+                    ht_away_score INTEGER,
+                    ht_total_goals INTEGER,
+                    start_time INTEGER,
+                    match_status TEXT,
+                    league TEXT,
+                    result TEXT,
+                    over_under_2_5 TEXT,
+                    both_teams_scored TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create league tables
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS league_tables (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    league_name TEXT,
+                    team_name TEXT,
+                    position INTEGER,
+                    matches_played INTEGER,
+                    wins INTEGER,
+                    draws INTEGER,
+                    losses INTEGER,
+                    goals_for INTEGER,
+                    goals_against INTEGER,
+                    goal_difference INTEGER,
+                    points INTEGER,
+                    last_5_results TEXT,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(league_name, team_name)
+                )
+            ''')
+            
+            # Create scheduled matches table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS scheduled_matches (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT UNIQUE,
+                    home_team TEXT,
+                    away_team TEXT,
+                    league TEXT,
+                    start_time INTEGER,
+                    match_time_display TEXT,
+                    status TEXT DEFAULT 'scheduled',
+                    home_odds REAL DEFAULT 1.0,
+                    draw_odds REAL DEFAULT 1.0,
+                    away_odds REAL DEFAULT 1.0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            conn.commit()
+            print(f"Database initialized successfully at: {db_path}")
+            
+            # Add some sample data if tables are empty (for demo purposes)
+            cursor.execute('SELECT COUNT(*) FROM matches')
+            if cursor.fetchone()[0] == 0:
+                print("Adding sample data for demo...")
+                sample_matches = [
+                    ('match1', 'game1', 'ARS', 'LEE', 2, 1, 3, 1, 0, 1, 1640995200000, 'FT', 'england virtual', '1', 'Over', 'No'),
+                    ('match2', 'game2', 'LEE', 'CHE', 1, 2, 3, 0, 1, 1, 1641081600000, 'FT', 'england virtual', '2', 'Over', 'Yes'),
+                    ('match3', 'game3', 'CHE', 'MCI', 0, 3, 3, 0, 2, 2, 1641168000000, 'FT', 'england virtual', '2', 'Over', 'No'),
+                    ('match4', 'game4', 'MCI', 'ARS', 2, 2, 4, 1, 1, 2, 1641254400000, 'FT', 'england virtual', 'X', 'Over', 'Yes'),
+                ]
+                
+                cursor.executemany('''
+                    INSERT INTO matches 
+                    (event_id, game_id, home_team, away_team, home_score, away_score, total_goals, 
+                     ht_home_score, ht_away_score, ht_total_goals, start_time, match_status, 
+                     league, result, over_under_2_5, both_teams_scored)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', sample_matches)
+                
+                # Add sample scheduled matches
+                import time
+                current_time = int(time.time() * 1000)
+                future_time = current_time + (60 * 60 * 1000)  # 1 hour from now
+                
+                sample_scheduled = [
+                    ('sched1', 'ARS', 'MCI', 'england virtual', future_time, '15:30', 'scheduled', 2.1, 3.2, 3.4),
+                    ('sched2', 'LEE', 'CHE', 'england virtual', future_time + 1800000, '16:00', 'scheduled', 2.8, 3.0, 2.6),
+                ]
+                
+                cursor.executemany('''
+                    INSERT INTO scheduled_matches 
+                    (event_id, home_team, away_team, league, start_time, match_time_display, status, home_odds, draw_odds, away_odds)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', sample_scheduled)
+                
+                conn.commit()
+                print("Sample data added successfully")
+                
+    except sqlite3.Error as e:
+        print(f"Database initialization error: {e}")
+
+# Initialize database on startup
+init_database()
 
 @app.route('/')
 def index():
@@ -301,6 +429,7 @@ def debug_database():
             
             return jsonify({
                 'database_status': {
+                    'database_path': db_path,
                     'scheduled_matches_count': scheduled_count,
                     'completed_matches_count': completed_count,
                     'league_tables_count': table_count,
@@ -322,98 +451,43 @@ def debug_info():
     try:
         current_dir = os.getcwd()
         files = os.listdir('.')
-        db_exists = os.path.exists('virtual_football.db')
+        db_exists = os.path.exists(db_path)
+        is_writable = os.access('.', os.W_OK)
         
         return f"""
         <h2>Debug Info</h2>
         <p><strong>Current directory:</strong> {current_dir}</p>
-        <p><strong>Files in directory:</strong> {files}</p>
+        <p><strong>Directory writable:</strong> {is_writable}</p>
+        <p><strong>Database path:</strong> {db_path}</p>
         <p><strong>Database file exists:</strong> {db_exists}</p>
+        <p><strong>Files in directory:</strong> {files}</p>
+        <p><strong>Environment variables:</strong> VERCEL={os.environ.get('VERCEL')}, VERCEL_ENV={os.environ.get('VERCEL_ENV')}</p>
         """
     except Exception as e:
         return f"Debug error: {e}"
 
-@app.route('/debug-db')
-def debug_database_creation():
-    import os
-    import sqlite3
-    
+@app.route('/health')
+def health_check():
+    """Simple health check endpoint."""
     try:
-        # Try to create database in current directory
-        db_path = 'virtual_football.db'
-        
-        # Try to connect and create tables
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Create a simple test table
-        cursor.execute('CREATE TABLE IF NOT EXISTS test_table (id INTEGER, name TEXT)')
-        cursor.execute('INSERT INTO test_table (id, name) VALUES (1, "test")')
-        conn.commit()
-        
-        # Check if it worked
-        cursor.execute('SELECT * FROM test_table')
-        result = cursor.fetchone()
-        conn.close()
-        
-        # Check if file was created
-        db_exists_now = os.path.exists(db_path)
-        
-        return f"""
-        <h2>Database Creation Test</h2>
-        <p><strong>Database created:</strong> {db_exists_now}</p>
-        <p><strong>Test data inserted:</strong> {result}</p>
-        <p><strong>Current directory writable:</strong> True</p>
-        """
-        
+        # Test database connection
+        with sqlite3.connect(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT COUNT(*) FROM matches')
+            matches_count = cursor.fetchone()[0]
+            
+        return jsonify({
+            'status': 'healthy',
+            'database_path': db_path,
+            'matches_count': matches_count
+        })
     except Exception as e:
-        return f"""
-        <h2>Database Creation Test</h2>
-        <p><strong>Error:</strong> {str(e)}</p>
-        <p><strong>This means:</strong> Current directory is not writable</p>
-        """
-
-@app.route('/debug-tmp')
-def debug_tmp_database():
-    import os
-    import sqlite3
-    
-    try:
-        # Try to create database in /tmp directory (writable on Vercel)
-        db_path = '/tmp/virtual_football.db'
-        
-        # Try to connect and create tables
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Create a simple test table
-        cursor.execute('CREATE TABLE IF NOT EXISTS test_table (id INTEGER, name TEXT)')
-        cursor.execute('INSERT INTO test_table (id, name) VALUES (1, "test from tmp")')
-        conn.commit()
-        
-        # Check if it worked
-        cursor.execute('SELECT * FROM test_table')
-        result = cursor.fetchone()
-        conn.close()
-        
-        # Check if file was created
-        db_exists_now = os.path.exists(db_path)
-        tmp_files = os.listdir('/tmp')
-        
-        return f"""
-        <h2>TMP Database Creation Test</h2>
-        <p><strong>Database created in /tmp:</strong> {db_exists_now}</p>
-        <p><strong>Test data inserted:</strong> {result}</p>
-        <p><strong>Files in /tmp:</strong> {tmp_files}</p>
-        <p><strong>/tmp directory writable:</strong> True</p>
-        """
-        
-    except Exception as e:
-        return f"""
-        <h2>TMP Database Creation Test</h2>
-        <p><strong>Error:</strong> {str(e)}</p>
-        """
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'database_path': db_path
+        }), 500
 
 if __name__ == '__main__':
-    print("Starting Flask app with league name standardization...")
+    print(f"Starting Flask app with database at: {db_path}")
     app.run(debug=True)
