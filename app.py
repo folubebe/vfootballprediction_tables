@@ -333,6 +333,47 @@ def debug_info():
     except Exception as e:
         return f"Debug error: {e}"
 
+@app.route('/debug-db')
+def debug_database_creation():
+    import os
+    import sqlite3
+    
+    try:
+        # Try to create database in current directory
+        db_path = 'virtual_football.db'
+        
+        # Try to connect and create tables
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        # Create a simple test table
+        cursor.execute('CREATE TABLE IF NOT EXISTS test_table (id INTEGER, name TEXT)')
+        cursor.execute('INSERT INTO test_table (id, name) VALUES (1, "test")')
+        conn.commit()
+        
+        # Check if it worked
+        cursor.execute('SELECT * FROM test_table')
+        result = cursor.fetchone()
+        conn.close()
+        
+        # Check if file was created
+        db_exists_now = os.path.exists(db_path)
+        
+        return f"""
+        <h2>Database Creation Test</h2>
+        <p><strong>Database created:</strong> {db_exists_now}</p>
+        <p><strong>Test data inserted:</strong> {result}</p>
+        <p><strong>Current directory writable:</strong> True</p>
+        """
+        
+    except Exception as e:
+        return f"""
+        <h2>Database Creation Test</h2>
+        <p><strong>Error:</strong> {str(e)}</p>
+        <p><strong>This means:</strong> Current directory is not writable</p>
+        """
+
+
 
 if __name__ == '__main__':
     print("Starting Flask app with league name standardization...")
