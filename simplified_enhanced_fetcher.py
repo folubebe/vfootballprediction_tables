@@ -79,23 +79,82 @@ class EnhancedDataFetcher:
             print(f"Error ensuring database tables: {e}")
     
     def initialize_driver(self):
-        """Initialize WebDriver with your proven configuration."""
+        """Initialize WebDriver with environment-aware Chrome configuration."""
         try:
             chrome_options = ChromeOptions()
-            # Uncomment next line for headless mode
+            
+            # Basic options that work everywhere
             chrome_options.add_argument("--headless")
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--no-sandbox")
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--window-size=1280,720")
+            chrome_options.add_argument("--disable-web-security")
+            chrome_options.add_argument("--remote-debugging-port=9222")
             
+            # Environment-aware Chrome binary detection
+            def get_chrome_binary():
+                """Detect Chrome binary based on environment."""
+                # Check if we're on a cloud platform (Render, Railway, etc.)
+                cloud_indicators = [
+                    os.environ.get('RENDER'),
+                    os.environ.get('RAILWAY_ENVIRONMENT'), 
+                    os.environ.get('HEROKU'),
+                    not os.path.exists("C:\\")  # Simple non-Windows check
+                ]
+                
+                if any(cloud_indicators):
+                    # Cloud environment - try different paths
+                    cloud_paths = [
+                        "/usr/bin/google-chrome",
+                        "/usr/bin/google-chrome-stable", 
+                        "/usr/bin/chromium",
+                        "/usr/bin/chromium-browser",
+                        "/opt/google/chrome/chrome"
+                    ]
+                    
+                    for path in cloud_paths:
+                        if os.path.exists(path):
+                            print(f"Found Chrome binary at: {path}")
+                            return path
+                            
+                    print("Warning: No Chrome binary found in cloud environment")
+                    return "/usr/bin/google-chrome"  # Default attempt
+                
+                # Local development - let Chrome find itself
+                print("Using system Chrome binary (local environment)")
+                return None
+            
+            # Set Chrome binary if needed
+            binary_path = get_chrome_binary()
+            if binary_path:
+                chrome_options.binary_location = binary_path
+            
+            # Initialize the driver
             service = ChromeService(ChromeDriverManager().install())
             self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            
             print("WebDriver initialized successfully")
             return True
+            
         except Exception as e:
             print(f"Error initializing WebDriver: {e}")
-            return False
+            
+            # Fallback attempt with minimal options
+            try:
+                print("Attempting fallback initialization...")
+                chrome_options = ChromeOptions()
+                chrome_options.add_argument("--headless")
+                chrome_options.add_argument("--no-sandbox")
+                
+                service = ChromeService(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                print("Fallback WebDriver initialization successful")
+                return True
+                
+            except Exception as fallback_error:
+                print(f"Fallback initialization also failed: {fallback_error}")
+                return False
     
     def navigate_to_page(self, page_num: int) -> bool:
         """Navigate to specific page using your logic."""
