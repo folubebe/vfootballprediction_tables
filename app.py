@@ -4,6 +4,7 @@ import sqlite3
 from config import standardize_league_name, get_display_name
 import sqlite3
 import os 
+import time 
 
 def get_db_path():
     """Get the correct database path based on environment."""
@@ -471,11 +472,12 @@ def test_api():
     """Test if the SportyBet API is accessible"""
     try:
         import requests
+        import time  # Add this missing import
         
         # Test the actual API endpoint your code uses
         url = "https://www.sportybet.com/api/ng/factsCenter/eventResultList"
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebDriver/537.36'
         }
         
         params = {
@@ -502,6 +504,88 @@ def test_api():
             'error': str(e),
             'accessible': False
         })
+
+@app.route('/admin/fetch-real-data', methods=['POST', 'GET'])
+def fetch_real_data():
+    """Fetch real data using your API client"""
+    try:
+        from api_client import VirtualFootballAPI, DataProcessor, DatabaseManager, LeagueTableGenerator
+        import time
+        
+        print("Fetching real data via API...")
+        
+        # Initialize components
+        api_client = VirtualFootballAPI()
+        data_processor = DataProcessor() 
+        db_manager = DatabaseManager(db_path)
+        
+        # Fetch from all leagues
+        all_league_data = api_client.fetch_all_leagues(days_back=0)  # Today's matches
+        
+        if not all_league_data:
+            return jsonify({
+                'success': False, 
+                'error': 'No data returned from API',
+                'leagues_attempted': list(api_client.leagues.keys())
+            })
+        
+        total_matches = 0
+        results = []
+        
+        # Process each league
+        for league_name, league_pages in all_league_data.items():
+            print(f"Processing {league_name}...")
+            
+            matches = data_processor.process_league_pages(league_pages)
+            
+            if matches:
+                # Standardize league names
+                standardized_league = standardize_league_name(league_name)
+                for match in matches:
+                    match['league'] = standardized_league
+                
+                # Save matches
+                db_manager.save_matches(matches, standardized_league)
+                
+                # Generate league table
+                table_generator = LeagueTableGenerator()
+                for match in matches:
+                    table_generator.add_match(match)
+                
+                league_table = table_generator.generate_table()
+                if league_table:
+                    db_manager.save_league_table(league_table, standardized_league)
+                
+                total_matches += len(matches)
+                results.append({
+                    'league': standardized_league,
+                    'raw_league': league_name,
+                    'matches': len(matches),
+                    'teams_in_table': len(league_table) if league_table else 0
+                })
+                print(f"✅ {standardized_league}: {len(matches)} matches, {len(league_table) if league_table else 0} teams")
+            else:
+                results.append({
+                    'league': league_name,
+                    'matches': 0,
+                    'error': 'No matches processed'
+                })
+        
+        return jsonify({
+            'success': True,
+            'total_matches_fetched': total_matches,
+            'leagues_processed': len([r for r in results if r['matches'] > 0]),
+            'results': results,
+            'message': f'Successfully fetched {total_matches} matches from {len(all_league_data)} leagues'
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
 
 @app.route('/debug/imports')
 def debug_imports():
