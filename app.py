@@ -316,6 +316,23 @@ def debug_database():
     except sqlite3.Error as e:
         return jsonify({'error': f'DB Error: {e}'}), 500
 
+@app.route('/debug')
+def debug_info():
+    try:
+        current_dir = os.getcwd()
+        files = os.listdir('.')
+        db_exists = os.path.exists('virtual_football.db')
+        
+        return f"""
+        <h2>Debug Info</h2>
+        <p><strong>Current directory:</strong> {current_dir}</p>
+        <p><strong>Files in directory:</strong> {files}</p>
+        <p><strong>Database file exists:</strong> {db_exists}</p>
+        """
+    except Exception as e:
+        return f"Debug error: {e}"
+
+
 if __name__ == '__main__':
     print("Starting Flask app with league name standardization...")
     app.run(debug=True)
