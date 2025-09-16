@@ -4,7 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const predictionDiv = document.getElementById('prediction');
     const leagueTableDiv = document.getElementById('league-table');
     const tableBody = document.getElementById('table-body');
-    const baseUrl = 'http://127.0.0.1:5000';
+    const baseUrl = ''; // Empty string for relative URLs
 
     let tableData = [];
 
