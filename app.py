@@ -466,6 +466,68 @@ def debug_info():
     except Exception as e:
         return f"Debug error: {e}"
 
+@app.route('/debug/test-api')
+def test_api():
+    """Test if the SportyBet API is accessible"""
+    try:
+        import requests
+        
+        # Test the actual API endpoint your code uses
+        url = "https://www.sportybet.com/api/ng/factsCenter/eventResultList"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+        
+        params = {
+            'pageNum': 1,
+            'pageSize': 10,
+            'sportId': 'sr:sport:202120001',
+            'categoryId': 'sv:category:202120001',  # England
+            'startTime': int(time.time() * 1000) - (24 * 60 * 60 * 1000),  # 24 hours ago
+            'endTime': int(time.time() * 1000),
+            '_t': int(time.time() * 1000)
+        }
+        
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        
+        return jsonify({
+            'status_code': response.status_code,
+            'accessible': response.status_code == 200,
+            'response_preview': str(response.text)[:500] if response.text else 'No content',
+            'url_used': response.url
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'accessible': False
+        })
+
+@app.route('/debug/imports')
+def debug_imports():
+    """Check if all required modules can be imported"""
+    import_status = {}
+    
+    try:
+        from api_client import VirtualFootballAPI, DataProcessor, DatabaseManager
+        import_status['api_client'] = 'Success'
+    except Exception as e:
+        import_status['api_client'] = f'Failed: {str(e)}'
+    
+    try:
+        from config import standardize_league_name
+        import_status['config'] = 'Success'
+    except Exception as e:
+        import_status['config'] = f'Failed: {str(e)}'
+    
+    try:
+        import requests
+        import_status['requests'] = 'Success'
+    except Exception as e:
+        import_status['requests'] = f'Failed: {str(e)}'
+    
+    return jsonify(import_status)
+
 @app.route('/health')
 def health_check():
     """Simple health check endpoint."""
