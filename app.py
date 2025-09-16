@@ -3,6 +3,7 @@ from predictor import Predictor
 import sqlite3
 from config import standardize_league_name, get_display_name
 import sqlite3
+import os 
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 db_path = 'virtual_football.db'
